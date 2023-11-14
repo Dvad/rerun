@@ -1,10 +1,11 @@
 use std::{ops::RangeBounds, sync::atomic::Ordering};
 
 use itertools::Itertools;
+use smallvec::SmallVec;
+
 use re_log::trace;
 use re_log_types::{DataCell, EntityPath, RowId, TimeInt, TimePoint, TimeRange, Timeline};
 use re_types_core::{ComponentName, ComponentNameSet};
-use smallvec::SmallVec;
 
 use crate::{DataStore, IndexedBucket, IndexedBucketInner, IndexedTable, PersistentIndexedTable};
 
@@ -13,7 +14,7 @@ use crate::{DataStore, IndexedBucket, IndexedBucketInner, IndexedTable, Persiste
 /// A query at a given time, for a given timeline.
 ///
 /// Get the latest version of the data available at this time.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct LatestAtQuery {
     pub timeline: Timeline,
     pub at: TimeInt,
@@ -48,7 +49,7 @@ impl LatestAtQuery {
 /// interval.
 ///
 /// Motivation: all data is considered alive until the next logging to the same component path.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct RangeQuery {
     pub timeline: Timeline,
     pub range: TimeRange,

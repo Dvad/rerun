@@ -690,7 +690,7 @@ impl IndexedBucket {
 /// In debug builds, it will panic if that's not the case.
 fn find_split_index(times: &[i64]) -> Option<usize> {
     debug_assert!(
-        times.windows(2).all(|t| t[0] <= t[1]),
+        !times.windows(2).any(|t| t[0] > t[1]),
         "time index must be sorted before splitting!"
     );
 
