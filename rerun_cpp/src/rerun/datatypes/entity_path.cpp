@@ -12,16 +12,6 @@ namespace rerun::datatypes {
         return datatype;
     }
 
-    Result<std::shared_ptr<arrow::StringBuilder>> EntityPath::new_arrow_array_builder(
-        arrow::MemoryPool* memory_pool
-    ) {
-        if (memory_pool == nullptr) {
-            return rerun::Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
-        }
-
-        return Result(std::make_shared<arrow::StringBuilder>(memory_pool));
-    }
-
     rerun::Error EntityPath::fill_arrow_array_builder(
         arrow::StringBuilder* builder, const EntityPath* elements, size_t num_elements
     ) {

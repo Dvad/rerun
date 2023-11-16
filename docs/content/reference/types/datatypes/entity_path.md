@@ -10,3 +10,6 @@ A path to an entity in the `DataStore`.
  * 🦀 [Rust API docs for `EntityPath`](https://docs.rs/rerun/latest/rerun/datatypes/struct.EntityPath.html)
 
 
+## Used by
+
+* [`SpaceViewComponent`](../blueprint/space_view_component.md)

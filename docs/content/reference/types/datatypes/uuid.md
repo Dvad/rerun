@@ -10,3 +10,6 @@ A 16-byte uuid.
  * 🦀 [Rust API docs for `Uuid`](https://docs.rs/rerun/latest/rerun/datatypes/struct.Uuid.html)
 
 
+## Used by
+
+* [`SpaceViewComponent`](../blueprint/space_view_component.md)
