@@ -11,7 +11,7 @@
 
 namespace arrow {
     class DataType;
-    class FixedSizeListBuilder;
+    class StructBuilder;
 } // namespace arrow
 
 namespace rerun::datatypes {
@@ -34,7 +34,7 @@ namespace rerun::datatypes {
 
         /// Fills an arrow array builder with an array of this type.
         static rerun::Error fill_arrow_array_builder(
-            arrow::FixedSizeListBuilder* builder, const Uuid* elements, size_t num_elements
+            arrow::StructBuilder* builder, const Uuid* elements, size_t num_elements
         );
     };
 } // namespace rerun::datatypes
