@@ -320,9 +320,11 @@ impl App {
         #[cfg(not(target_arch = "wasm32"))]
         {
             if ui.button("Mobile size").clicked() {
-                // frame.set_window_size(egui::vec2(375.0, 812.0)); // iPhone 12 mini
-                _frame.set_window_size(egui::vec2(375.0, 667.0)); //  iPhone SE 2nd gen
-                _frame.set_fullscreen(false);
+                // egui::ViewportCommand::InnerSize(egui::vec2(375.0, 812.0)) // iPhone 12 mini
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(375.0, 667.0)));
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
                 ui.close_menu();
             }
             ui.separator();

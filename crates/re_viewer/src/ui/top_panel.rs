@@ -16,17 +16,8 @@ pub fn top_panel(
 ) {
     re_tracing::profile_function!();
 
-    let native_pixels_per_point = frame.info().native_pixels_per_point;
-    let fullscreen = {
-        #[cfg(target_arch = "wasm32")]
-        {
-            false
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            frame.info().window_info.fullscreen
-        }
-    };
+    let native_pixels_per_point = Some(ui.input(|i| i.pixels_per_point()));
+    let fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
     let style_like_web = app.is_screenshotting();
     let top_bar_style =
         app.re_ui()
@@ -51,15 +42,15 @@ pub fn top_panel(
             })
             .response;
 
-            #[cfg(not(target_arch = "wasm32"))]
-            if !re_ui::NATIVE_WINDOW_BAR {
-                let title_bar_response = _response.interact(egui::Sense::click());
-                if title_bar_response.double_clicked() {
-                    frame.set_maximized(!frame.info().window_info.maximized);
-                } else if title_bar_response.is_pointer_button_down_on() {
-                    frame.drag_window();
-                }
-            }
+            //#[cfg(not(target_arch = "wasm32"))]
+            // if !re_ui::NATIVE_WINDOW_BAR {
+            //     let title_bar_response = _response.interact(egui::Sense::click());
+            //     if title_bar_response.double_clicked() {
+            //         frame.set_maximized(!frame.info().window_info.maximized);
+            //     } else if title_bar_response.is_pointer_button_down_on() {
+            //         frame.drag_window();
+            //     }
+            // }
         });
 }
 

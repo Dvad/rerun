@@ -41,7 +41,8 @@ impl Screenshotter {
     ) -> ScreenshotterOutput {
         if let Some(countdown) = &mut self.countdown {
             if *countdown == 0 {
-                frame.request_screenshot();
+                // TODO:
+                //frame.request_screenshot();
             } else {
                 *countdown -= 1;
             }

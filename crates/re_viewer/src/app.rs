@@ -421,7 +421,8 @@ impl App {
             }
             #[cfg(not(target_arch = "wasm32"))]
             UICommand::Quit => {
-                _frame.close();
+                // TODO:
+                //_frame.close();
             }
 
             UICommand::ResetViewer => self.command_sender.send_system(SystemCommand::ResetViewer),
@@ -449,7 +450,8 @@ impl App {
 
             #[cfg(not(target_arch = "wasm32"))]
             UICommand::ToggleFullscreen => {
-                _frame.set_fullscreen(!_frame.info().window_info.fullscreen);
+                // TODO:
+                //_frame.set_fullscreen(!_frame.info().window_info.fullscreen);
             }
             #[cfg(not(target_arch = "wasm32"))]
             UICommand::ZoomIn => {
@@ -1017,12 +1019,14 @@ impl eframe::App for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(resolution_in_points) = self.startup_options.resolution_in_points.take() {
-            frame.set_window_size(resolution_in_points.into());
+            // TODO:
+            //frame.set_window_size(resolution_in_points.into());
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         if self.screenshotter.update(egui_ctx, frame).quit {
-            frame.close();
+            // TODO:
+            //frame.close();
             return;
         }
 
@@ -1059,8 +1063,7 @@ impl eframe::App for App {
             }
 
             // Apply zoom factor on top of natively reported pixel per point.
-            let pixels_per_point = frame.info().native_pixels_per_point.unwrap_or(1.0)
-                * self.app_options().zoom_factor;
+            let pixels_per_point = egui_ctx.pixels_per_point() * self.app_options().zoom_factor;
             egui_ctx.set_pixels_per_point(pixels_per_point);
         }
 
@@ -1146,12 +1149,13 @@ impl eframe::App for App {
         );
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn post_rendering(&mut self, _window_size: [u32; 2], frame: &eframe::Frame) {
-        if let Some(screenshot) = frame.screenshot() {
-            self.screenshotter.save(&screenshot);
-        }
-    }
+    // TODO:
+    // #[cfg(not(target_arch = "wasm32"))]
+    // fn post_rendering(&mut self, _window_size: [u32; 2], frame: &eframe::Frame) {
+    //     if let Some(screenshot) = frame.screenshot() {
+    //         self.screenshotter.save(&screenshot);
+    //     }
+    // }
 }
 
 /// Add built-in space views to the registry.

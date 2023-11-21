@@ -987,31 +987,31 @@ pub fn native_window_buttons_ui(frame: &mut eframe::Frame, ui: &mut egui::Ui) {
         .add(Button::new(RichText::new("❌").size(button_height)))
         .on_hover_text("Close the window");
     if close_response.clicked() {
-        frame.close();
+        //frame.close(); // TODO:
     }
 
-    if frame.info().window_info.maximized {
-        let maximized_response = ui
-            .add(Button::new(RichText::new("🗗").size(button_height)))
-            .on_hover_text("Restore window");
-        if maximized_response.clicked() {
-            frame.set_maximized(false);
-        }
-    } else {
-        let maximized_response = ui
-            .add(Button::new(RichText::new("🗗").size(button_height)))
-            .on_hover_text("Maximize window");
-        if maximized_response.clicked() {
-            frame.set_maximized(true);
-        }
-    }
+    // if frame.info().window_info.maximized {
+    //     let maximized_response = ui
+    //         .add(Button::new(RichText::new("🗗").size(button_height)))
+    //         .on_hover_text("Restore window");
+    //     if maximized_response.clicked() {
+    //         frame.set_maximized(false);
+    //     }
+    // } else {
+    //     let maximized_response = ui
+    //         .add(Button::new(RichText::new("🗗").size(button_height)))
+    //         .on_hover_text("Maximize window");
+    //     if maximized_response.clicked() {
+    //         frame.set_maximized(true);
+    //     }
+    // }
 
-    let minimized_response = ui
-        .add(Button::new(RichText::new("🗕").size(button_height)))
-        .on_hover_text("Minimize the window");
-    if minimized_response.clicked() {
-        frame.set_minimized(true);
-    }
+    // let minimized_response = ui
+    //     .add(Button::new(RichText::new("🗕").size(button_height)))
+    //     .on_hover_text("Minimize the window");
+    // if minimized_response.clicked() {
+    //     frame.set_minimized(true);
+    // }
 }
 
 pub fn help_hover_button(ui: &mut egui::Ui) -> egui::Response {
