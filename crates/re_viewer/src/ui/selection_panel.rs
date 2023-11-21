@@ -1,22 +1,27 @@
 use egui::NumExt as _;
 
-use re_data_store::{ColorMapper, Colormap, EditableAutoValue, EntityPath, EntityProperties};
+use re_data_store::{
+    ColorMapper, Colormap, EditableAutoValue, EntityPath, EntityProperties, VisibleHistory,
+};
 use re_data_ui::{image_meaning_for_entity, item_ui, DataUi};
-use re_log_types::TimeType;
+use re_space_view_time_series::TimeSeriesSpaceView;
 use re_types::{
     components::{PinholeProjection, Transform3D},
     tensor_data::TensorDataMeaning,
 };
 use re_viewer_context::{
-    gpu_bridge::colormap_dropdown_button_ui, Item, SpaceViewId, UiVerbosity, ViewerContext,
+    gpu_bridge::colormap_dropdown_button_ui, Item, SpaceViewClassName, SpaceViewId, UiVerbosity,
+    ViewerContext,
 };
-use re_viewport::{Viewport, ViewportBlueprint};
+use re_viewport::{external::re_space_view::DataQuery as _, Viewport, ViewportBlueprint};
+
+use crate::ui::visible_history::visible_history_ui;
 
 use super::selection_history_ui::SelectionHistoryUi;
 
 // ---
 
-/// The "Selection View" side-bar.
+/// The "Selection View" sidebar.
 #[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub(crate) struct SelectionPanel {
@@ -42,6 +47,9 @@ impl SelectionPanel {
                 fill: ui.style().visuals.panel_fill,
                 ..Default::default()
             });
+
+        // Always reset the VH highlight, and let the UI re-set it if needed.
+        ctx.rec_cfg.visible_history_highlight = None;
 
         panel.show_animated_inside(ui, expanded, |ui: &mut egui::Ui| {
             // Set the clip rectangle to the panel for the benefit of nested, "full span" widgets
@@ -269,11 +277,27 @@ fn blueprint_ui(
             ui.add_space(ui.spacing().item_spacing.y);
 
             if let Some(space_view) = viewport.blueprint.space_view_mut(space_view_id) {
+                let space_view_class = *space_view.class_name();
                 let space_view_state = viewport.state.space_view_state_mut(
                     ctx.space_view_class_registry,
                     space_view.id,
                     space_view.class_name(),
                 );
+
+                // Space View don't inherit properties.
+                let mut resolved_entity_props = EntityProperties::default();
+
+                // TODO(#4194): it should be the responsibility of the space view to provide defaults for entity props
+                if space_view_class == TimeSeriesSpaceView::NAME {
+                    resolved_entity_props.visible_history.sequences = VisibleHistory::ALL;
+                    resolved_entity_props.visible_history.nanos = VisibleHistory::ALL;
+                }
+
+                let root_data_result = space_view.root_data_result(ctx.store_context);
+                let mut props = root_data_result
+                    .individual_properties
+                    .clone()
+                    .unwrap_or(resolved_entity_props.clone());
 
                 space_view
                     .class(ctx.space_view_class_registry)
@@ -284,6 +308,18 @@ fn blueprint_ui(
                         &space_view.space_origin,
                         space_view.id,
                     );
+
+                visible_history_ui(
+                    ctx,
+                    ui,
+                    &space_view_class,
+                    true,
+                    None,
+                    &mut props.visible_history,
+                    &resolved_entity_props.visible_history,
+                );
+
+                root_data_result.save_override(Some(props), ctx);
             }
         }
 
@@ -303,10 +339,31 @@ fn blueprint_ui(
                         // TODO(emilk): show the values of this specific instance (e.g. point in the point cloud)!
                     } else {
                         // splat - the whole entity
-                        let data_blueprint = space_view.contents.data_blueprints_individual();
-                        let mut props = data_blueprint.get(&instance_path.entity_path);
-                        entity_props_ui(ctx, ui, Some(&instance_path.entity_path), &mut props);
-                        data_blueprint.set(instance_path.entity_path.clone(), props);
+                        let space_view_class = *space_view.class_name();
+                        let entity_path = &instance_path.entity_path;
+                        let as_group = false;
+
+                        let data_result = space_view.contents.resolve(
+                            space_view,
+                            ctx.store_context,
+                            ctx.entities_per_system_per_class,
+                            &instance_path.entity_path,
+                            as_group,
+                        );
+
+                        let mut props = data_result
+                            .individual_properties
+                            .clone()
+                            .unwrap_or_default();
+                        entity_props_ui(
+                            ctx,
+                            ui,
+                            &space_view_class,
+                            Some(entity_path),
+                            &mut props,
+                            &data_result.resolved_properties,
+                        );
+                        data_result.save_override(Some(props), ctx);
                     }
                 }
             } else {
@@ -322,7 +379,32 @@ fn blueprint_ui(
         Item::DataBlueprintGroup(space_view_id, data_blueprint_group_handle) => {
             if let Some(space_view) = viewport.blueprint.space_view_mut(space_view_id) {
                 if let Some(group) = space_view.contents.group_mut(*data_blueprint_group_handle) {
-                    entity_props_ui(ctx, ui, None, &mut group.properties_individual);
+                    let group_path = group.group_path.clone();
+                    let as_group = false;
+
+                    let data_result = space_view.contents.resolve(
+                        space_view,
+                        ctx.store_context,
+                        ctx.entities_per_system_per_class,
+                        &group_path,
+                        as_group,
+                    );
+
+                    let space_view_class = *space_view.class_name();
+                    let mut props = data_result
+                        .individual_properties
+                        .clone()
+                        .unwrap_or_default();
+
+                    entity_props_ui(
+                        ctx,
+                        ui,
+                        &space_view_class,
+                        None,
+                        &mut props,
+                        &data_result.resolved_properties,
+                    );
+                    data_result.save_override(Some(props), ctx);
                 } else {
                     ctx.selection_state_mut().clear_current();
                 }
@@ -364,8 +446,10 @@ fn list_existing_data_blueprints(
 fn entity_props_ui(
     ctx: &mut ViewerContext<'_>,
     ui: &mut egui::Ui,
+    space_view_class: &SpaceViewClassName,
     entity_path: Option<&EntityPath>,
     entity_props: &mut EntityProperties,
+    resolved_entity_props: &EntityProperties,
 ) {
     let re_ui = ctx.re_ui;
     re_ui.checkbox(ui, &mut entity_props.visible, "Visible");
@@ -373,36 +457,19 @@ fn entity_props_ui(
         .checkbox(ui, &mut entity_props.interactive, "Interactive")
         .on_hover_text("If disabled, the entity will not react to any mouse interaction");
 
+    visible_history_ui(
+        ctx,
+        ui,
+        space_view_class,
+        false,
+        entity_path,
+        &mut entity_props.visible_history,
+        &resolved_entity_props.visible_history,
+    );
+
     egui::Grid::new("entity_properties")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label("Visible history");
-            let visible_history = &mut entity_props.visible_history;
-            match ctx.rec_cfg.time_ctrl.timeline().typ() {
-                TimeType::Time => {
-                    let mut time_sec = visible_history.nanos as f32 / 1e9;
-                    let speed = (time_sec * 0.05).at_least(0.01);
-                    ui.add(
-                        egui::DragValue::new(&mut time_sec)
-                            .clamp_range(0.0..=f32::INFINITY)
-                            .speed(speed)
-                            .suffix("s"),
-                    )
-                    .on_hover_text("Include this much history of the Entity in the Space View");
-                    visible_history.nanos = (time_sec * 1e9).round() as _;
-                }
-                TimeType::Sequence => {
-                    let speed = (visible_history.sequences as f32 * 0.05).at_least(1.0);
-                    ui.add(
-                        egui::DragValue::new(&mut visible_history.sequences)
-                            .clamp_range(0.0..=f32::INFINITY)
-                            .speed(speed),
-                    )
-                    .on_hover_text("Include this much history of the Entity in the Space View");
-                }
-            }
-            ui.end_row();
-
             // TODO(wumpf): It would be nice to only show pinhole & depth properties in the context of a 3D view.
             // if *view_state.state_spatial.nav_mode.get() == SpatialNavigationMode::ThreeD {
             if let Some(entity_path) = entity_path {

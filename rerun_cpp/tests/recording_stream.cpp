@@ -34,8 +34,7 @@ struct BadArchetype {
 namespace rerun {
     template <>
     struct AsComponents<BadArchetype> {
-        static rerun::Result<std::vector<rerun::SerializedComponentBatch>>
-            serialize(const BadArchetype&) {
+        static rerun::Result<std::vector<rerun::DataCell>> serialize(const BadArchetype&) {
             return BadComponent::error;
         }
     };
@@ -484,8 +483,8 @@ SCENARIO("Recording stream handles invalid logging gracefully", TEST_TAG) {
             const char* path = "valid";
 
             AND_GIVEN("a cell with a null buffer") {
-                rerun::DataCell cell;
-                cell.buffer = nullptr;
+                rerun::DataCell cell = {};
+                cell.num_instances = 1;
                 cell.component_name = "valid";
 
                 THEN("try_log_data_row fails with UnexpectedNullArgument") {
@@ -496,39 +495,7 @@ SCENARIO("Recording stream handles invalid logging gracefully", TEST_TAG) {
                 }
             }
 
-            // We changed to taking std::string_view instead of const char* and constructing such from nullptr crashes
-            // at least on some C++ implementations.
-            // If we'd want to support this in earnest we'd have to create out own string_view type.
-            //
-            // AND_GIVEN("a cell with a null component name") {
-            //     rerun::DataCell cell;
-            //     cell.buffer = std::make_shared<arrow::Buffer>(nullptr, 0);
-            //     cell.component_name = nullptr;
-
-            //     THEN("try_log_data_row fails with UnexpectedNullArgument") {
-            //         CHECK(
-            //             stream.try_log_data_row(path, 1, 1, &cell, true).code ==
-            //             rerun::ErrorCode::UnexpectedNullArgument
-            //         );
-            //     }
-            // }
-
-            AND_GIVEN("a cell with a valid component name but invalid data") {
-                uint8_t invalid_data[1] = {0};
-                rerun::DataCell cell;
-                cell.component_name = "very-valid";
-                cell.buffer = std::make_shared<arrow::Buffer>(invalid_data, sizeof(invalid_data));
-
-                THEN("try_log_data_row fails with ArrowIpcMessageParsingFailure") {
-                    CHECK(
-                        stream.try_log_data_row(path, 1, 1, &cell, true).code ==
-                        rerun::ErrorCode::ArrowIpcMessageParsingFailure
-                    );
-                }
-            }
-
-            // TODO(andreas): Missing test that provokes `ArrowDataCellError`. It's fairly hard to
-            // get there which I reckon is a good thing!
+            // TODO(andreas): Tests missing for various invalid data cell types, provoking the different errors that may occur.
         }
     }
 }
@@ -542,7 +509,7 @@ SCENARIO("Recording stream handles serialization failure during logging graceful
             BadComponent::error.code =
                 GENERATE(rerun::ErrorCode::Unknown, rerun::ErrorCode::ArrowStatusCode_TypeError);
 
-            THEN("calling log_component_batch with an array logs the serialization error") {
+            THEN("calling log with an array logs the serialization error") {
                 check_logged_error(
                     [&] {
                         stream.log(path, std::array{component, component});
@@ -550,7 +517,7 @@ SCENARIO("Recording stream handles serialization failure during logging graceful
                     component.error.code
                 );
             }
-            THEN("calling log_component_batch with a vector logs the serialization error") {
+            THEN("calling log with a vector logs the serialization error") {
                 check_logged_error(
                     [&] {
                         stream.log(path, std::vector{component, component});
@@ -558,18 +525,17 @@ SCENARIO("Recording stream handles serialization failure during logging graceful
                     component.error.code
                 );
             }
-            THEN("calling log_component_batch with a c array logs the serialization error") {
+            THEN("calling log with a c array logs the serialization error") {
                 const BadComponent components[] = {component, component};
                 check_logged_error([&] { stream.log(path, components); }, component.error.code);
             }
-            THEN("calling try_log_component_batch with an array forwards the serialization error") {
+            THEN("calling try_log with an array forwards the serialization error") {
                 CHECK(stream.try_log(path, std::array{component, component}) == component.error);
             }
-            THEN("calling try_log_component_batch with a vector forwards the serialization error") {
+            THEN("calling try_log with a vector forwards the serialization error") {
                 CHECK(stream.try_log(path, std::vector{component, component}) == component.error);
             }
-            THEN("calling try_log_component_batch with a c array forwards the serialization error"
-            ) {
+            THEN("calling try_log with a c array forwards the serialization error") {
                 const BadComponent components[] = {component, component};
                 CHECK(stream.try_log(path, components) == component.error);
             }
@@ -600,6 +566,14 @@ SCENARIO("RecordingStream can set time without errors", TEST_TAG) {
     }
     SECTION("Setting time nanos does not log errors") {
         check_logged_error([&] { stream.set_time_nanos("my sequence", 1); });
+    }
+    SECTION("Setting time via chrono duration does not log errors") {
+        using namespace std::chrono_literals;
+        check_logged_error([&] { stream.set_time("duration", 1.0s); });
+        check_logged_error([&] { stream.set_time("duration", 1000ms); });
+    }
+    SECTION("Setting time via chrono duration does not log errors") {
+        check_logged_error([&] { stream.set_time("timepoint", std::chrono::system_clock::now()); });
     }
     SECTION("Resetting time does not log errors") {
         check_logged_error([&] { stream.reset_time(); });

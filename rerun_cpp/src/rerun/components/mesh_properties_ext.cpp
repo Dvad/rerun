@@ -1,23 +1,13 @@
 #include "mesh_properties.hpp"
 
-// Uncomment for better auto-complete while editing the extension.
-// #define EDIT_EXTENSION
+namespace rerun::components {
+#if 0
+    // <CODEGEN_COPY_TO_HEADER>
 
-namespace rerun {
-    namespace components {
+    static MeshProperties from_triangle_indices(Collection<uint32_t> indices) {
+        return MeshProperties(std::move(indices));
+    }
 
-#ifdef EDIT_EXTENSION
-        struct MeshPropertiesExt {
-#define MeshProperties MeshPropertiesExt
-
-            // [CODEGEN COPY TO HEADER START]
-
-            static MeshProperties from_triangle_indices(std::vector<uint32_t> indices) {
-                return MeshProperties(indices);
-            }
-
-            // [CODEGEN COPY TO HEADER END]
-        };
+    // </CODEGEN_COPY_TO_HEADER>
 #endif
-    } // namespace components
-} // namespace rerun
+} // namespace rerun::components

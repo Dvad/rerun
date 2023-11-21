@@ -3,31 +3,29 @@
 
 #include "transform3d.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char Transform3D::INDICATOR_COMPONENT_NAME[] = "rerun.components.Transform3DIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char Transform3D::INDICATOR_COMPONENT_NAME[] =
-            "rerun.components.Transform3DIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::Transform3D>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::Transform3D>::serialize(
         const archetypes::Transform3D& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(1);
+        std::vector<DataCell> cells;
+        cells.reserve(2);
 
         {
-            auto result =
-                ComponentBatch<rerun::components::Transform3D>(archetype.transform).serialize();
+            auto result = rerun::components::Transform3D::to_data_cell(&archetype.transform, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                ComponentBatch<Transform3D::IndicatorComponent>(Transform3D::IndicatorComponent())
-                    .serialize();
+            auto indicator = Transform3D::IndicatorComponent();
+            auto result = Transform3D::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

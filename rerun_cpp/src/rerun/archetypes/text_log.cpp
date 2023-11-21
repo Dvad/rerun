@@ -3,40 +3,40 @@
 
 #include "text_log.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char TextLog::INDICATOR_COMPONENT_NAME[] = "rerun.components.TextLogIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char TextLog::INDICATOR_COMPONENT_NAME[] = "rerun.components.TextLogIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::TextLog>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::TextLog>::serialize(
         const archetypes::TextLog& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(3);
+        std::vector<DataCell> cells;
+        cells.reserve(4);
 
         {
-            auto result = ComponentBatch<rerun::components::Text>(archetype.text).serialize();
+            auto result = rerun::components::Text::to_data_cell(&archetype.text, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.level.has_value()) {
-            auto result = ComponentBatch<rerun::components::TextLogLevel>(archetype.level.value())
-                              .serialize();
+            auto result =
+                rerun::components::TextLogLevel::to_data_cell(&archetype.level.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.color.has_value()) {
-            auto result =
-                ComponentBatch<rerun::components::Color>(archetype.color.value()).serialize();
+            auto result = rerun::components::Color::to_data_cell(&archetype.color.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result = ComponentBatch<TextLog::IndicatorComponent>(TextLog::IndicatorComponent())
-                              .serialize();
+            auto indicator = TextLog::IndicatorComponent();
+            auto result = TextLog::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

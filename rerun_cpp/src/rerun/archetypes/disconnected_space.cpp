@@ -3,32 +3,33 @@
 
 #include "disconnected_space.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char DisconnectedSpace::INDICATOR_COMPONENT_NAME[] =
+        "rerun.components.DisconnectedSpaceIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char DisconnectedSpace::INDICATOR_COMPONENT_NAME[] =
-            "rerun.components.DisconnectedSpaceIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<
-        archetypes::DisconnectedSpace>::serialize(const archetypes::DisconnectedSpace& archetype) {
+    Result<std::vector<DataCell>> AsComponents<archetypes::DisconnectedSpace>::serialize(
+        const archetypes::DisconnectedSpace& archetype
+    ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(1);
+        std::vector<DataCell> cells;
+        cells.reserve(2);
 
         {
-            auto result =
-                ComponentBatch<rerun::components::DisconnectedSpace>(archetype.disconnected_space)
-                    .serialize();
+            auto result = rerun::components::DisconnectedSpace::to_data_cell(
+                &archetype.disconnected_space,
+                1
+            );
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result = ComponentBatch<DisconnectedSpace::IndicatorComponent>(
-                              DisconnectedSpace::IndicatorComponent()
-            )
-                              .serialize();
+            auto indicator = DisconnectedSpace::IndicatorComponent();
+            auto result = DisconnectedSpace::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

@@ -3,31 +3,30 @@
 
 #include "annotation_context.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char AnnotationContext::INDICATOR_COMPONENT_NAME[] =
+        "rerun.components.AnnotationContextIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char AnnotationContext::INDICATOR_COMPONENT_NAME[] =
-            "rerun.components.AnnotationContextIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<
-        archetypes::AnnotationContext>::serialize(const archetypes::AnnotationContext& archetype) {
+    Result<std::vector<DataCell>> AsComponents<archetypes::AnnotationContext>::serialize(
+        const archetypes::AnnotationContext& archetype
+    ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(1);
+        std::vector<DataCell> cells;
+        cells.reserve(2);
 
         {
-            auto result =
-                ComponentBatch<rerun::components::AnnotationContext>(archetype.context).serialize();
+            auto result = rerun::components::AnnotationContext::to_data_cell(&archetype.context, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result = ComponentBatch<AnnotationContext::IndicatorComponent>(
-                              AnnotationContext::IndicatorComponent()
-            )
-                              .serialize();
+            auto indicator = AnnotationContext::IndicatorComponent();
+            auto result = AnnotationContext::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

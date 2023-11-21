@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use ahash::HashMap;
 
 use re_data_store::{EntityPath, StoreDb};
-use re_log_types::{DataCell, DataRow, RowId, TimePoint};
-use re_types::Loggable as _;
+use re_log_types::{DataRow, RowId, TimePoint};
+use re_types_core::{archetypes::Clear, AsComponents as _};
 use re_viewer_context::{
     CommandSender, Item, SpaceViewClassName, SpaceViewId, SystemCommand, SystemCommandSender,
     ViewerContext,
@@ -14,7 +14,7 @@ use crate::{
     blueprint::{AutoSpaceViews, SpaceViewComponent, SpaceViewMaximized, ViewportLayout},
     space_info::SpaceInfoCollection,
     space_view::SpaceViewBlueprint,
-    space_view_heuristics::{default_created_space_views, identify_entities_per_system_per_class},
+    space_view_heuristics::default_created_space_views,
     VIEWPORT_PATH,
 };
 
@@ -106,9 +106,8 @@ impl<'a> ViewportBlueprint<'a> {
             .map_or(false, |ri| ri.is_app_default_blueprint());
         *tree_actions = Default::default();
 
-        let entities_per_system_per_class = identify_entities_per_system_per_class(ctx);
         for space_view in
-            default_created_space_views(ctx, spaces_info, &entities_per_system_per_class)
+            default_created_space_views(ctx, spaces_info, ctx.entities_per_system_per_class)
         {
             self.add_space_view(space_view);
         }
@@ -361,10 +360,8 @@ pub fn load_viewport_blueprint(blueprint_db: &re_data_store::StoreDb) -> Viewpor
         blueprint_db
             .entity_db()
             .tree
-            .children
-            .get(&re_data_store::EntityPathPart::Name(
-                SpaceViewComponent::SPACEVIEW_PREFIX.into(),
-            )) {
+            .subtree(SpaceViewId::registry())
+    {
         space_views
             .children
             .values()
@@ -441,12 +438,6 @@ pub fn sync_space_view(
     snapshot: Option<&SpaceViewBlueprint>,
 ) {
     if snapshot.map_or(true, |snapshot| space_view.has_edits(snapshot)) {
-        let entity_path = EntityPath::from(format!(
-            "{}/{}",
-            SpaceViewComponent::SPACEVIEW_PREFIX,
-            space_view.id
-        ));
-
         // TODO(jleibs): Seq instead of timeless?
         let timepoint = TimePoint::timeless();
 
@@ -454,26 +445,23 @@ pub fn sync_space_view(
             space_view: space_view.clone(),
         };
 
-        add_delta_from_single_component(deltas, &entity_path, &timepoint, component);
+        add_delta_from_single_component(deltas, &space_view.entity_path(), &timepoint, component);
     }
 }
 
 pub fn clear_space_view(deltas: &mut Vec<DataRow>, space_view_id: &SpaceViewId) {
-    let entity_path = EntityPath::from(format!(
-        "{}/{}",
-        SpaceViewComponent::SPACEVIEW_PREFIX,
-        space_view_id
-    ));
-
     // TODO(jleibs): Seq instead of timeless?
     let timepoint = TimePoint::timeless();
 
-    let cell = DataCell::from_arrow_empty(
-        SpaceViewComponent::name(),
-        SpaceViewComponent::arrow_datatype(),
-    );
-
-    let row = DataRow::from_cells1_sized(RowId::random(), entity_path, timepoint, 0, cell).unwrap();
-
-    deltas.push(row);
+    if let Ok(row) = DataRow::from_component_batches(
+        RowId::random(),
+        timepoint,
+        space_view_id.as_entity_path(),
+        Clear::recursive()
+            .as_component_batches()
+            .iter()
+            .map(|b| b.as_ref()),
+    ) {
+        deltas.push(row);
+    }
 }

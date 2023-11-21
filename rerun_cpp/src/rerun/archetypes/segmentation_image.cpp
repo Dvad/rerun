@@ -3,36 +3,36 @@
 
 #include "segmentation_image.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char SegmentationImage::INDICATOR_COMPONENT_NAME[] =
+        "rerun.components.SegmentationImageIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char SegmentationImage::INDICATOR_COMPONENT_NAME[] =
-            "rerun.components.SegmentationImageIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<
-        archetypes::SegmentationImage>::serialize(const archetypes::SegmentationImage& archetype) {
+    Result<std::vector<DataCell>> AsComponents<archetypes::SegmentationImage>::serialize(
+        const archetypes::SegmentationImage& archetype
+    ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(2);
+        std::vector<DataCell> cells;
+        cells.reserve(3);
 
         {
-            auto result = ComponentBatch<rerun::components::TensorData>(archetype.data).serialize();
+            auto result = rerun::components::TensorData::to_data_cell(&archetype.data, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.draw_order.has_value()) {
-            auto result = ComponentBatch<rerun::components::DrawOrder>(archetype.draw_order.value())
-                              .serialize();
+            auto result =
+                rerun::components::DrawOrder::to_data_cell(&archetype.draw_order.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result = ComponentBatch<SegmentationImage::IndicatorComponent>(
-                              SegmentationImage::IndicatorComponent()
-            )
-                              .serialize();
+            auto indicator = SegmentationImage::IndicatorComponent();
+            auto result = SegmentationImage::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

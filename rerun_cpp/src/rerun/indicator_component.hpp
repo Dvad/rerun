@@ -1,6 +1,5 @@
 #pragma once
 
-#include "arrow.hpp"
 #include "data_cell.hpp"
 
 namespace rerun {
@@ -14,10 +13,7 @@ namespace rerun {
             IndicatorComponent() = default;
 
             /// Creates a Rerun DataCell from an array of IndicatorComponent components.
-            static Result<rerun::DataCell> to_data_cell(
-                const IndicatorComponent<Name>*, size_t num_instances
-            ) {
-                (void)num_instances; // unused
+            static Result<rerun::DataCell> to_data_cell(const IndicatorComponent<Name>*, size_t) {
                 return rerun::DataCell::create_indicator_component(Name);
             }
         };

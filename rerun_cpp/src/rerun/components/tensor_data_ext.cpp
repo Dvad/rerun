@@ -10,16 +10,16 @@ namespace rerun {
         struct TensorDataExt {
 #define TensorData TensorDataExt
 
-            // [CODEGEN COPY TO HEADER START]
+            // <CODEGEN_COPY_TO_HEADER>
 
             /// New Tensor from dimensions and tensor buffer.
             TensorData(
-                std::vector<rerun::datatypes::TensorDimension> shape,
+                rerun::Collection<rerun::datatypes::TensorDimension> shape,
                 rerun::datatypes::TensorBuffer buffer
             )
                 : data(rerun::datatypes::TensorData(std::move(shape), std::move(buffer))) {}
 
-            // [CODEGEN COPY TO HEADER END]
+            // </CODEGEN_COPY_TO_HEADER>
         };
 
 #undef TensorData

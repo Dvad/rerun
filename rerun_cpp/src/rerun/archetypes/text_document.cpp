@@ -3,36 +3,35 @@
 
 #include "text_document.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char TextDocument::INDICATOR_COMPONENT_NAME[] = "rerun.components.TextDocumentIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char TextDocument::INDICATOR_COMPONENT_NAME[] =
-            "rerun.components.TextDocumentIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::TextDocument>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::TextDocument>::serialize(
         const archetypes::TextDocument& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(2);
+        std::vector<DataCell> cells;
+        cells.reserve(3);
 
         {
-            auto result = ComponentBatch<rerun::components::Text>(archetype.text).serialize();
+            auto result = rerun::components::Text::to_data_cell(&archetype.text, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.media_type.has_value()) {
-            auto result = ComponentBatch<rerun::components::MediaType>(archetype.media_type.value())
-                              .serialize();
+            auto result =
+                rerun::components::MediaType::to_data_cell(&archetype.media_type.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                ComponentBatch<TextDocument::IndicatorComponent>(TextDocument::IndicatorComponent())
-                    .serialize();
+            auto indicator = TextDocument::IndicatorComponent();
+            auto result = TextDocument::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

@@ -3,79 +3,87 @@
 
 #pragma once
 
+#include "../collection.hpp"
 #include "../data_cell.hpp"
 #include "../datatypes/class_description_map_elem.hpp"
 #include "../result.hpp"
 
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <utility>
-#include <vector>
 
 namespace arrow {
     class DataType;
     class ListBuilder;
-    class MemoryPool;
 } // namespace arrow
 
-namespace rerun {
-    namespace components {
-        /// **Component**: The `AnnotationContext` provides additional information on how to display entities.
+namespace rerun::components {
+    /// **Component**: The `AnnotationContext` provides additional information on how to display entities.
+    ///
+    /// Entities can use `ClassId`s and `KeypointId`s to provide annotations, and
+    /// the labels and colors will be looked up in the appropriate
+    /// `AnnotationContext`. We use the *first* annotation context we find in the
+    /// path-hierarchy when searching up through the ancestors of a given entity
+    /// path.
+    struct AnnotationContext {
+        /// List of class descriptions, mapping class indices to class names, colors etc.
+        rerun::Collection<rerun::datatypes::ClassDescriptionMapElem> class_map;
+
+        /// Name of the component, used for serialization.
+        static const char NAME[];
+
+      public:
+        // Extensions to generated type defined in 'annotation_context_ext.cpp'
+
+        /// Construct from an initializer list of elements from which `rerun::datatypes::ClassDescriptionMapElem`s can be constructed.
         ///
-        /// Entities can use `ClassId`s and `KeypointId`s to provide annotations, and
-        /// the labels and colors will be looked up in the appropriate
-        /// `AnnotationContext`. We use the *first* annotation context we find in the
-        /// path-hierarchy when searching up through the ancestors of a given entity
-        /// path.
-        struct AnnotationContext {
-            /// List of class descriptions, mapping class indices to class names, colors etc.
-            std::vector<rerun::datatypes::ClassDescriptionMapElem> class_map;
-
-            /// Name of the component, used for serialization.
-            static const char NAME[];
-
-          public:
-            // Extensions to generated type defined in 'annotation_context_ext.cpp'
-
-            AnnotationContext(
-                std::initializer_list<rerun::datatypes::ClassDescription> class_descriptions
-            ) {
-                class_map.reserve(class_descriptions.size());
-                for (const auto& class_description : class_descriptions) {
-                    class_map.emplace_back(std::move(class_description));
-                }
+        /// This will then create a new collection of `rerun::datatypes::ClassDescriptionMapElem`.
+        ///
+        /// _Implementation note_:
+        /// We handle this type of conversion in a generic `rerun::ContainerAdapter`.
+        /// However, it is *still* necessary since initializer list overload resolution is handled
+        /// in a special way by the compiler, making this case not being covered by the general container case.
+        template <
+            typename TElement, //
+            typename = std::enable_if_t<
+                std::is_constructible_v<datatypes::ClassDescriptionMapElem, TElement>> //
+            >
+        AnnotationContext(std::initializer_list<TElement> class_descriptions) {
+            std::vector<datatypes::ClassDescriptionMapElem> class_map_new;
+            class_map_new.reserve(class_descriptions.size());
+            for (const auto& class_description : class_descriptions) {
+                class_map_new.emplace_back(std::move(class_description));
             }
-
-          public:
-            AnnotationContext() = default;
-
-            AnnotationContext(std::vector<rerun::datatypes::ClassDescriptionMapElem> class_map_)
-                : class_map(std::move(class_map_)) {}
-
-            AnnotationContext& operator=(
-                std::vector<rerun::datatypes::ClassDescriptionMapElem> class_map_
-            ) {
-                class_map = std::move(class_map_);
-                return *this;
-            }
-
-            /// Returns the arrow data type this type corresponds to.
-            static const std::shared_ptr<arrow::DataType>& arrow_datatype();
-
-            /// Creates a new array builder with an array of this type.
-            static Result<std::shared_ptr<arrow::ListBuilder>> new_arrow_array_builder(
-                arrow::MemoryPool* memory_pool
+            class_map = Collection<datatypes::ClassDescriptionMapElem>::take_ownership(
+                std::move(class_map_new)
             );
+        }
 
-            /// Fills an arrow array builder with an array of this type.
-            static Error fill_arrow_array_builder(
-                arrow::ListBuilder* builder, const AnnotationContext* elements, size_t num_elements
-            );
+      public:
+        AnnotationContext() = default;
 
-            /// Creates a Rerun DataCell from an array of AnnotationContext components.
-            static Result<rerun::DataCell> to_data_cell(
-                const AnnotationContext* instances, size_t num_instances
-            );
-        };
-    } // namespace components
-} // namespace rerun
+        AnnotationContext(rerun::Collection<rerun::datatypes::ClassDescriptionMapElem> class_map_)
+            : class_map(std::move(class_map_)) {}
+
+        AnnotationContext& operator=(
+            rerun::Collection<rerun::datatypes::ClassDescriptionMapElem> class_map_
+        ) {
+            class_map = std::move(class_map_);
+            return *this;
+        }
+
+        /// Returns the arrow data type this type corresponds to.
+        static const std::shared_ptr<arrow::DataType>& arrow_datatype();
+
+        /// Fills an arrow array builder with an array of this type.
+        static rerun::Error fill_arrow_array_builder(
+            arrow::ListBuilder* builder, const AnnotationContext* elements, size_t num_elements
+        );
+
+        /// Creates a Rerun DataCell from an array of AnnotationContext components.
+        static Result<rerun::DataCell> to_data_cell(
+            const AnnotationContext* instances, size_t num_instances
+        );
+    };
+} // namespace rerun::components

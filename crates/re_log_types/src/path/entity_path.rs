@@ -184,6 +184,23 @@ impl EntityPath {
     pub fn join(&self, other: &Self) -> Self {
         self.iter().chain(other.iter()).cloned().collect()
     }
+
+    /// Helper function to iterate over all incremental [`EntityPath`]s from start to end, NOT including start itself.
+    ///
+    /// For example `incremental_walk("foo", "foo/bar/baz")` returns: `["foo/bar", "foo/bar/baz"]`
+    pub fn incremental_walk<'a>(
+        start: Option<&'_ EntityPath>,
+        end: &'a EntityPath,
+    ) -> impl Iterator<Item = EntityPath> + 'a {
+        re_tracing::profile_function!();
+        if start.map_or(true, |start| end.is_descendant_of(start)) {
+            let first_ind = start.map_or(0, |start| start.len() + 1);
+            let parts = end.as_slice();
+            itertools::Either::Left((first_ind..=end.len()).map(|i| EntityPath::from(&parts[0..i])))
+        } else {
+            itertools::Either::Right(std::iter::empty())
+        }
+    }
 }
 
 impl SizeBytes for EntityPath {
@@ -260,7 +277,7 @@ impl Loggable for EntityPath {
 
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        re_types::datatypes::Utf8::arrow_datatype()
+        re_types_core::datatypes::Utf8::arrow_datatype()
     }
 
     fn to_arrow_opt<'a>(
@@ -282,17 +299,17 @@ impl Loggable for EntityPath {
     where
         Self: 'a,
     {
-        re_types::datatypes::Utf8::to_arrow(
+        re_types_core::datatypes::Utf8::to_arrow(
             data.into_iter()
                 .map(Into::into)
-                .map(|ent_path| re_types::datatypes::Utf8(ent_path.path.to_string().into())),
+                .map(|ent_path| re_types_core::datatypes::Utf8(ent_path.path.to_string().into())),
         )
     }
 
     fn from_arrow(
         array: &dyn ::arrow2::array::Array,
     ) -> re_types_core::DeserializationResult<Vec<Self>> {
-        Ok(re_types::datatypes::Utf8::from_arrow(array)?
+        Ok(re_types_core::datatypes::Utf8::from_arrow(array)?
             .into_iter()
             .map(|utf8| Self::from(utf8.to_string()))
             .collect())
@@ -360,5 +377,48 @@ impl std::fmt::Debug for EntityPath {
 impl std::fmt::Display for EntityPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.path.fmt(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_incremental_walk() {
+        assert_eq!(
+            EntityPath::incremental_walk(None, &EntityPath::root()).collect::<Vec<_>>(),
+            vec![EntityPath::root()]
+        );
+        assert_eq!(
+            EntityPath::incremental_walk(Some(&EntityPath::root()), &EntityPath::root())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            EntityPath::incremental_walk(None, &EntityPath::from("foo")).collect::<Vec<_>>(),
+            vec![EntityPath::root(), EntityPath::from("foo")]
+        );
+        assert_eq!(
+            EntityPath::incremental_walk(Some(&EntityPath::root()), &EntityPath::from("foo"))
+                .collect::<Vec<_>>(),
+            vec![EntityPath::from("foo")]
+        );
+        assert_eq!(
+            EntityPath::incremental_walk(None, &EntityPath::from("foo/bar")).collect::<Vec<_>>(),
+            vec![
+                EntityPath::root(),
+                EntityPath::from("foo"),
+                EntityPath::from("foo/bar")
+            ]
+        );
+        assert_eq!(
+            EntityPath::incremental_walk(
+                Some(&EntityPath::from("foo")),
+                &EntityPath::from("foo/bar/baz")
+            )
+            .collect::<Vec<_>>(),
+            vec![EntityPath::from("foo/bar"), EntityPath::from("foo/bar/baz")]
+        );
     }
 }

@@ -3,31 +3,30 @@
 
 #include "view_coordinates.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char ViewCoordinates::INDICATOR_COMPONENT_NAME[] =
+        "rerun.components.ViewCoordinatesIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char ViewCoordinates::INDICATOR_COMPONENT_NAME[] =
-            "rerun.components.ViewCoordinatesIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<
-        archetypes::ViewCoordinates>::serialize(const archetypes::ViewCoordinates& archetype) {
+    Result<std::vector<DataCell>> AsComponents<archetypes::ViewCoordinates>::serialize(
+        const archetypes::ViewCoordinates& archetype
+    ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(1);
+        std::vector<DataCell> cells;
+        cells.reserve(2);
 
         {
-            auto result =
-                ComponentBatch<rerun::components::ViewCoordinates>(archetype.xyz).serialize();
+            auto result = rerun::components::ViewCoordinates::to_data_cell(&archetype.xyz, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result = ComponentBatch<ViewCoordinates::IndicatorComponent>(
-                              ViewCoordinates::IndicatorComponent()
-            )
-                              .serialize();
+            auto indicator = ViewCoordinates::IndicatorComponent();
+            auto result = ViewCoordinates::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

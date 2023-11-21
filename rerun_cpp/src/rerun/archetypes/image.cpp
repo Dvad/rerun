@@ -3,34 +3,35 @@
 
 #include "image.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char Image::INDICATOR_COMPONENT_NAME[] = "rerun.components.ImageIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char Image::INDICATOR_COMPONENT_NAME[] = "rerun.components.ImageIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::Image>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::Image>::serialize(
         const archetypes::Image& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(2);
+        std::vector<DataCell> cells;
+        cells.reserve(3);
 
         {
-            auto result = ComponentBatch<rerun::components::TensorData>(archetype.data).serialize();
+            auto result = rerun::components::TensorData::to_data_cell(&archetype.data, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.draw_order.has_value()) {
-            auto result = ComponentBatch<rerun::components::DrawOrder>(archetype.draw_order.value())
-                              .serialize();
+            auto result =
+                rerun::components::DrawOrder::to_data_cell(&archetype.draw_order.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                ComponentBatch<Image::IndicatorComponent>(Image::IndicatorComponent()).serialize();
+            auto indicator = Image::IndicatorComponent();
+            auto result = Image::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

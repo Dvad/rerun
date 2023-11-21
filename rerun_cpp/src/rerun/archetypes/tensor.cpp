@@ -3,28 +3,29 @@
 
 #include "tensor.hpp"
 
-#include "../component_batch_adapter_builtins.hpp"
+#include "../collection_adapter_builtins.hpp"
+
+namespace rerun::archetypes {
+    const char Tensor::INDICATOR_COMPONENT_NAME[] = "rerun.components.TensorIndicator";
+}
 
 namespace rerun {
-    namespace archetypes {
-        const char Tensor::INDICATOR_COMPONENT_NAME[] = "rerun.components.TensorIndicator";
-    }
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::Tensor>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::Tensor>::serialize(
         const archetypes::Tensor& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(1);
+        std::vector<DataCell> cells;
+        cells.reserve(2);
 
         {
-            auto result = ComponentBatch<rerun::components::TensorData>(archetype.data).serialize();
+            auto result = rerun::components::TensorData::to_data_cell(&archetype.data, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result = ComponentBatch<Tensor::IndicatorComponent>(Tensor::IndicatorComponent())
-                              .serialize();
+            auto indicator = Tensor::IndicatorComponent();
+            auto result = Tensor::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
