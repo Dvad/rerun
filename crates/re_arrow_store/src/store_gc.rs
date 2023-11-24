@@ -2,13 +2,17 @@ use std::collections::BTreeMap;
 
 use ahash::{HashMap, HashSet};
 
-use re_log_types::{EntityPath, RowId, TimeInt, TimeRange, Timeline};
+use re_log_types::{EntityPath, RowId, TimeInt, TimePoint, TimeRange, Timeline};
 use re_types_core::{ComponentName, SizeBytes as _};
 
 use crate::{
     store::{ClusterCellCache, IndexedBucketInner, IndexedTable, PersistentIndexedTable},
     DataStore, DataStoreStats, StoreDiff, StoreDiffKind, StoreEvent,
 };
+
+// TODO: timeless too
+
+// TODO: bruh why are we not parallelizing all of this??
 
 // ---
 
@@ -197,6 +201,8 @@ impl DataStore {
         (events, stats_diff)
     }
 
+    // TODO: might want to give some love to GC benchmarks too...
+
     /// Tries to drop _at least_ `num_bytes_to_drop` bytes of data from the store.
     ///
     /// Returns the list of `RowId`s that were purged from the store.
@@ -221,6 +227,11 @@ impl DataStore {
         // 2. Find all tables that potentially hold data associated with that `RowId`
         // 3. Drop the associated row and account for the space we got back
 
+        // let batch_size = (self.config.indexed_bucket_num_rows as usize).saturating_mul(2); // TODO: explain
+        let batch_size = (self.config.indexed_bucket_num_rows as usize); // TODO: explain
+
+        let mut batch: Vec<(TimePoint, RowId)> = Vec::new();
+
         for (row_id, timepoint) in &self.metadata_registry.registry {
             if num_bytes_to_drop <= 0.0 {
                 break;
@@ -230,61 +241,183 @@ impl DataStore {
                 continue;
             }
 
-            let mut diff: Option<StoreDiff> = None;
+            batch.push((timepoint.clone(), *row_id));
+            if batch.len() < batch_size {
+                // TODO: need to handle batch-still-has-data edge case
+                continue;
+            }
 
-            // find all tables that could possibly contain this `RowId`
-            for ((timeline, _), table) in &mut self.tables {
-                if let Some(time) = timepoint.get(timeline) {
-                    let (removed, num_bytes_removed) =
-                        table.try_drop_row(&self.cluster_cell_cache, *row_id, time.as_i64());
-                    if let Some(inner) = diff.as_mut() {
-                        if let Some(removed) = removed {
-                            diff = inner.union(&removed);
+            // TODO: it's already sorted on rowid by definition
+            let newest_row_id = batch.last().unwrap().1;
+
+            for ((_, _), table) in &mut self.tables {
+                let (removed, num_bytes_removed) = table.try_drop_bucket(
+                    &self.cluster_cell_cache,
+                    self.cluster_key,
+                    newest_row_id,
+                );
+                if removed.len() > 0 {
+                    // dbg!((removed.len(), num_bytes_removed));
+                }
+                diffs.extend(removed);
+                num_bytes_to_drop -= num_bytes_removed as f64;
+            }
+
+            if num_bytes_to_drop <= 0.0 {
+                break;
+            }
+
+            for (timepoint, row_id) in batch.drain(..) {
+                let mut diff: Option<StoreDiff> = None;
+
+                // find all tables that could possibly contain this `RowId`
+                // TODO: if we know that we already batch-dropped it for this table, then we don't
+                // need to do this!!!
+                for ((timeline, _), table) in &mut self.tables {
+                    if let Some(time) = timepoint.get(timeline) {
+                        let (removed, num_bytes_removed) =
+                            table.try_drop_row(&self.cluster_cell_cache, row_id, time.as_i64());
+                        if let Some(inner) = diff.as_mut() {
+                            if let Some(removed) = removed {
+                                diff = inner.union(&removed);
+                            }
+                        } else {
+                            diff = removed;
                         }
-                    } else {
-                        diff = removed;
+                        num_bytes_to_drop -= num_bytes_removed as f64;
                     }
-                    num_bytes_to_drop -= num_bytes_removed as f64;
+                }
+
+                // TODO: messsyyyyyyyyyyyyyy
+                // TODO(jleibs): This is a worst-case removal-order. Would be nice to collect all the rows
+                // first and then remove them in one pass.
+                if timepoint.is_timeless() && include_timeless {
+                    for table in self.timeless_tables.values_mut() {
+                        // let deleted_comps = deleted.timeless.entry(ent_path.clone()_hash).or_default();
+                        let (removed, num_bytes_removed) =
+                            table.try_drop_row(&self.cluster_cell_cache, row_id);
+                        if let Some(inner) = diff.as_mut() {
+                            if let Some(removed) = removed {
+                                diff = inner.union(&removed);
+                            }
+                        } else {
+                            diff = removed;
+                        }
+                        num_bytes_to_drop -= num_bytes_removed as f64;
+                    }
+                }
+
+                // Only decrement the metadata size trackers if we're actually certain that we'll drop
+                // that RowId in the end.
+                if diff.is_some() {
+                    let metadata_dropped_size_bytes =
+                        row_id.total_size_bytes() + timepoint.total_size_bytes();
+                    self.metadata_registry.heap_size_bytes = self
+                        .metadata_registry
+                        .heap_size_bytes
+                        .checked_sub(metadata_dropped_size_bytes)
+                        .unwrap_or_else(|| {
+                            re_log::warn_once!(
+                                "GC metadata_registry size tracker underflowed, this is a bug!"
+                            );
+                            0
+                        });
+                    num_bytes_to_drop -= metadata_dropped_size_bytes as f64;
+                }
+
+                diffs.extend(diff);
+
+                // TODO
+                if num_bytes_to_drop <= 0.0 {
+                    break;
                 }
             }
+        }
 
-            // TODO(jleibs): This is a worst-case removal-order. Would be nice to collect all the rows
-            // first and then remove them in one pass.
-            if timepoint.is_timeless() && include_timeless {
-                for table in self.timeless_tables.values_mut() {
-                    // let deleted_comps = deleted.timeless.entry(ent_path.clone()_hash).or_default();
-                    let (removed, num_bytes_removed) =
-                        table.try_drop_row(&self.cluster_cell_cache, *row_id);
-                    if let Some(inner) = diff.as_mut() {
-                        if let Some(removed) = removed {
-                            diff = inner.union(&removed);
+        // TODO: don't dupe
+        if !batch.is_empty() {
+            // TODO: it's already sorted on rowid by definition
+            let newest_row_id = batch.last().unwrap().1;
+
+            for ((_, _), table) in &mut self.tables {
+                let (removed, num_bytes_removed) = table.try_drop_bucket(
+                    &self.cluster_cell_cache,
+                    self.cluster_key,
+                    newest_row_id,
+                );
+                if removed.len() > 0 {
+                    // dbg!((removed.len(), num_bytes_removed));
+                }
+                diffs.extend(removed);
+                num_bytes_to_drop -= num_bytes_removed as f64;
+            }
+
+            for (timepoint, row_id) in batch.drain(..) {
+                let mut diff: Option<StoreDiff> = None;
+
+                // find all tables that could possibly contain this `RowId`
+                // TODO: if we know that we already batch-dropped it for this table, then we don't
+                // need to do this!!!
+                // TODO: yup we seriously need to rayon on these tables
+                for ((timeline, _), table) in &mut self.tables {
+                    if let Some(time) = timepoint.get(timeline) {
+                        let (removed, num_bytes_removed) =
+                            table.try_drop_row(&self.cluster_cell_cache, row_id, time.as_i64());
+                        if let Some(inner) = diff.as_mut() {
+                            if let Some(removed) = removed {
+                                diff = inner.union(&removed);
+                            }
+                        } else {
+                            diff = removed;
                         }
-                    } else {
-                        diff = removed;
+                        num_bytes_to_drop -= num_bytes_removed as f64;
                     }
-                    num_bytes_to_drop -= num_bytes_removed as f64;
+                }
+
+                // TODO: messsyyyyyyyyyyyyyy
+                // TODO(jleibs): This is a worst-case removal-order. Would be nice to collect all the rows
+                // first and then remove them in one pass.
+                if timepoint.is_timeless() && include_timeless {
+                    for table in self.timeless_tables.values_mut() {
+                        // let deleted_comps = deleted.timeless.entry(ent_path.clone()_hash).or_default();
+                        let (removed, num_bytes_removed) =
+                            table.try_drop_row(&self.cluster_cell_cache, row_id);
+                        if let Some(inner) = diff.as_mut() {
+                            if let Some(removed) = removed {
+                                diff = inner.union(&removed);
+                            }
+                        } else {
+                            diff = removed;
+                        }
+                        num_bytes_to_drop -= num_bytes_removed as f64;
+                    }
+                }
+
+                // Only decrement the metadata size trackers if we're actually certain that we'll drop
+                // that RowId in the end.
+                if diff.is_some() {
+                    let metadata_dropped_size_bytes =
+                        row_id.total_size_bytes() + timepoint.total_size_bytes();
+                    self.metadata_registry.heap_size_bytes = self
+                        .metadata_registry
+                        .heap_size_bytes
+                        .checked_sub(metadata_dropped_size_bytes)
+                        .unwrap_or_else(|| {
+                            re_log::warn_once!(
+                                "GC metadata_registry size tracker underflowed, this is a bug!"
+                            );
+                            0
+                        });
+                    num_bytes_to_drop -= metadata_dropped_size_bytes as f64;
+                }
+
+                diffs.extend(diff);
+
+                // TODO
+                if num_bytes_to_drop <= 0.0 {
+                    break;
                 }
             }
-
-            // Only decrement the metadata size trackers if we're actually certain that we'll drop
-            // that RowId in the end.
-            if diff.is_some() {
-                let metadata_dropped_size_bytes =
-                    row_id.total_size_bytes() + timepoint.total_size_bytes();
-                self.metadata_registry.heap_size_bytes = self
-                    .metadata_registry
-                    .heap_size_bytes
-                    .checked_sub(metadata_dropped_size_bytes)
-                    .unwrap_or_else(|| {
-                        re_log::warn_once!(
-                            "GC metadata_registry size tracker underflowed, this is a bug!"
-                        );
-                        0
-                    });
-                num_bytes_to_drop -= metadata_dropped_size_bytes as f64;
-            }
-
-            diffs.extend(diff);
         }
 
         // Purge the removed rows from the metadata_registry.
@@ -503,7 +636,7 @@ impl IndexedTable {
         row_id: RowId,
         time: i64,
     ) -> (Option<StoreDiff>, u64) {
-        re_tracing::profile_function!();
+        // re_tracing::profile_function!(); // TODO: too costly
 
         let ent_path = self.ent_path.clone();
         let timeline = self.timeline;
@@ -552,9 +685,110 @@ impl IndexedTable {
 
         (diff, dropped_num_bytes)
     }
+
+    // TODO: explain logic
+    fn try_drop_bucket(
+        &mut self,
+        cluster_cache: &ClusterCellCache,
+        cluster_key: ComponentName,
+        newest_row_id: RowId,
+    ) -> (Vec<StoreDiff>, u64) {
+        re_tracing::profile_function!();
+
+        let ent_path = self.ent_path.clone();
+        let timeline = self.timeline;
+
+        let mut diffs: Vec<StoreDiff> = Vec::new();
+        let mut dropped_num_bytes = 0u64;
+        let mut dropped_num_rows = 0u64;
+
+        let mut dropped_buckets = Vec::new();
+
+        // TODO: it's linear time though, that's a problem... we can probably improve that
+        // somewhat?
+        for (bucket_time, bucket) in &self.buckets {
+            let bucket = &mut *bucket.inner.write();
+
+            if newest_row_id < bucket.newest_row_id {
+                continue; // TODO: explain
+            }
+
+            // TODO: explain why we have to refresh it
+            bucket.refresh_newest_row_id();
+
+            // TODO: all the cloning is dumb, just take() stuff
+
+            if newest_row_id >= bucket.newest_row_id {
+                let IndexedBucketInner {
+                    col_time,
+                    col_row_id,
+                    mut columns,
+                    size_bytes,
+                    ..
+                } = std::mem::take(bucket);
+
+                dropped_buckets.push(*bucket_time);
+
+                // TODO: _this_ is our perf issue, can we do better somehow?
+                // make StoreDiff a bulk thing could be the answer here
+                for i in 0..col_time.len() {
+                    let mut diff = StoreDiff::deletion(col_row_id[i], ent_path.clone())
+                        .at_timestamp(timeline, col_time[i]);
+
+                    for (component_name, column) in &mut columns {
+                        if let Some(cell) = &column.0[i] {
+                            if cell.component_name() == cluster_key {
+                                if let Some(cached_cell) = cluster_cache.get(&cell.num_instances())
+                                {
+                                    if std::ptr::eq(cell.as_ptr(), cached_cell.as_ptr()) {
+                                        // We don't fire events when inserting autogenerated cluster cells, and
+                                        // therefore must not fire when removing them either.
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            diff.cells.insert(*component_name, cell.clone());
+                        }
+                    }
+
+                    diffs.push(diff);
+                }
+
+                dropped_num_bytes += size_bytes;
+                dropped_num_rows += col_time.len() as u64;
+
+                continue;
+            }
+        }
+
+        for bucket_time in dropped_buckets {
+            self.buckets.remove(&bucket_time);
+        }
+
+        // NOTE: If this is the first bucket of the table that we've just removed, we need the
+        // next one to become responsible for `-∞`.
+        if let Some((_, bucket)) = self.buckets.pop_first() {
+            self.buckets.insert(TimeInt::MIN, bucket);
+        }
+
+        self.buckets_num_rows -= dropped_num_rows;
+        self.buckets_size_bytes -= dropped_num_bytes;
+
+        (diffs, dropped_num_bytes)
+    }
 }
 
 impl IndexedBucketInner {
+    fn refresh_newest_row_id(&mut self) {
+        self.newest_row_id = self
+            .col_row_id
+            .iter()
+            .copied()
+            .reduce(RowId::max)
+            .unwrap_or(RowId::ZERO);
+    }
+
     /// Tries to drop the given `row_id` from the table, which is expected to be found at the
     /// specified `time`.
     ///
@@ -568,6 +802,16 @@ impl IndexedBucketInner {
         ent_path: &EntityPath,
         time: i64,
     ) -> (Option<StoreDiff>, u64) {
+        // TODO: prob doesnt help very much because we already look at the right time
+        if self.newest_row_id < row_id {
+            // TODO: explain why we have to refresh it
+            self.refresh_newest_row_id();
+
+            if self.newest_row_id < row_id {
+                return (None, 0); // TODO: explain
+            }
+        }
+
         self.sort();
 
         let IndexedBucketInner {
@@ -576,6 +820,7 @@ impl IndexedBucketInner {
             col_time,
             col_insert_id,
             col_row_id,
+            newest_row_id,
             col_num_instances,
             columns,
             size_bytes,
@@ -613,6 +858,10 @@ impl IndexedBucketInner {
             let removed_row_id = col_row_id.swap_remove(row_index);
             debug_assert_eq!(row_id, removed_row_id);
             dropped_num_bytes += removed_row_id.total_size_bytes();
+
+            // TODO: that's idiotic obviously
+            // TODO: if this makes sense this is OP
+            // *newest_row_id = RowId::ZERO;
 
             // col_time
             let row_time = col_time.swap_remove(row_index);
@@ -690,6 +939,8 @@ impl PersistentIndexedTable {
         } = self;
 
         let mut diff: Option<StoreDiff> = None;
+
+        // TODO: newest_row_id
 
         // TODO(#1807): Timeless data isn't sorted, so we need to do a full scan here.
         // Speed this up when we implement #1807.

@@ -35,6 +35,7 @@ impl IndexedBucket {
             col_insert_id,
             col_row_id,
             col_num_instances,
+            newest_row_id: _,
             columns,
             size_bytes: _,
         } = &*inner.read();

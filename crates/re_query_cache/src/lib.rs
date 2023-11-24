@@ -48,6 +48,7 @@
 //
 // to be sorted:
 // - batched store events for additions
+// - new batch GC
 
 // TODO: arranging the caches by hash(Query) is nice and all but what happens when someone's play
 // around with the time range UI? It's not the same query anymore...

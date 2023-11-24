@@ -393,6 +393,7 @@ impl IndexedBucketInner {
             col_time,
             col_insert_id,
             col_row_id,
+            newest_row_id: _,
             col_num_instances,
             columns,
             size_bytes,

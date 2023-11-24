@@ -182,7 +182,6 @@ fn bench_cached_points(c: &mut criterion::Criterion) {
                     re_types::components::KeypointId,
                     re_types::components::ClassId,
                     _,
-                    _,
                 >(&store, &latest_at, &ent_path, |it| {
                     for (_, keys, _, _, _, _, _, _) in it {
                         assert_eq!(keys.len(), NUM_POINTS);
@@ -201,7 +200,6 @@ fn bench_cached_points(c: &mut criterion::Criterion) {
         Text,
         re_types::components::KeypointId,
         re_types::components::ClassId,
-        _,
         _,
     >(&store, &latest_at, &ent_path, |it| {
         let (_, instance_keys, positions, colors, radii, labels, keypoint_ids, class_ids) =

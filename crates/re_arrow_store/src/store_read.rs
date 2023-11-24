@@ -726,6 +726,7 @@ impl IndexedBucket {
             col_time,
             col_insert_id: _,
             col_row_id,
+            newest_row_id: _,
             col_num_instances: _,
             columns,
             size_bytes: _,
@@ -839,6 +840,7 @@ impl IndexedBucket {
             col_time,
             col_insert_id: _,
             col_row_id,
+            newest_row_id: _,
             col_num_instances: _,
             columns,
             size_bytes: _,
@@ -951,6 +953,7 @@ impl IndexedBucketInner {
             col_time,
             col_insert_id,
             col_row_id,
+            newest_row_id: _,
             col_num_instances,
             columns,
             size_bytes: _,
@@ -960,10 +963,10 @@ impl IndexedBucketInner {
             return;
         }
 
-        re_tracing::profile_function!();
+        // re_tracing::profile_function!(); // TODO: too costly
 
         let swaps = {
-            re_tracing::profile_scope!("swaps");
+            // re_tracing::profile_scope!("swaps"); // TODO: too costly
             let mut swaps = (0..col_time.len()).collect::<Vec<_>>();
             // NOTE: Within a single timestamp, we must use the Row ID as tie-breaker!
             // The Row ID is how we define ordering within a client's thread, and our public APIs
@@ -981,18 +984,18 @@ impl IndexedBucketInner {
         // TODO(#442): re_datastore: implement efficient shuffling on the read path.
 
         {
-            re_tracing::profile_scope!("control");
+            // re_tracing::profile_scope!("control"); // TODO: too costly
 
             fn reshuffle_control_column<T: Copy, const N: usize>(
                 column: &mut SmallVec<[T; N]>,
                 swaps: &[(usize, usize)],
             ) {
                 let source = {
-                    re_tracing::profile_scope!("clone");
+                    // re_tracing::profile_scope!("clone"); // TODO: too costly
                     column.clone()
                 };
                 {
-                    re_tracing::profile_scope!("rotate");
+                    // re_tracing::profile_scope!("rotate"); // TODO: too costly
                     for (from, to) in swaps.iter().copied() {
                         column[to] = source[from];
                     }
@@ -1008,7 +1011,7 @@ impl IndexedBucketInner {
         }
 
         {
-            re_tracing::profile_scope!("data");
+            // re_tracing::profile_scope!("data"); // TODO: too costly
             // shuffle component columns back into a sorted state
             for column in columns.values_mut() {
                 let mut source = column.clone();

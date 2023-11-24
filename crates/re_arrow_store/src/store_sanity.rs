@@ -160,6 +160,7 @@ impl IndexedBucket {
                 col_time,
                 col_insert_id,
                 col_row_id,
+                newest_row_id,
                 col_num_instances,
                 columns,
                 size_bytes: _,
@@ -180,6 +181,16 @@ impl IndexedBucket {
                         got: *time_range,
                     });
                 }
+            }
+
+            // Make sure `newest_row_id` isn't out of sync
+            {
+                let expected = col_row_id
+                    .iter()
+                    .copied()
+                    .reduce(RowId::max)
+                    .unwrap_or(RowId::ZERO);
+                assert_eq!(expected, *newest_row_id); // TODO: actual error
             }
 
             // All columns should be `Self::num_rows` long.

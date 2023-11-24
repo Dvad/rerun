@@ -439,6 +439,7 @@ impl IndexedBucket {
             col_time,
             col_insert_id,
             col_row_id,
+            newest_row_id,
             col_num_instances,
             columns,
             size_bytes,
@@ -461,6 +462,7 @@ impl IndexedBucket {
             size_bytes_added += insert_id.total_size_bytes();
         }
         col_row_id.push(row.row_id());
+        *newest_row_id = RowId::max(*newest_row_id, row.row_id());
         size_bytes_added += row.row_id().total_size_bytes();
         col_num_instances.push(row.num_instances());
         size_bytes_added += row.num_instances().total_size_bytes();
@@ -559,6 +561,7 @@ impl IndexedBucket {
             col_time: col_time1,
             col_insert_id: col_insert_id1,
             col_row_id: col_row_id1,
+            newest_row_id: newest_row_id1,
             col_num_instances: col_num_instances1,
             columns: columns1,
             size_bytes: _, // NOTE: recomputed below
@@ -613,6 +616,8 @@ impl IndexedBucket {
                 )
             };
 
+            *newest_row_id1 = RowId::ZERO; // TODO: explain
+
             // this updates `columns1` in-place!
             let columns2: IntMap<_, _> = {
                 re_tracing::profile_scope!("data");
@@ -641,6 +646,7 @@ impl IndexedBucket {
                     col_time: col_time2,
                     col_insert_id: col_insert_id2,
                     col_row_id: col_row_id2,
+                    newest_row_id: RowId::ZERO, // TODO: explain
                     col_num_instances: col_num_instances2,
                     columns: columns2,
                     size_bytes: 0, // NOTE: computed below
