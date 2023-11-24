@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":["define_blueprint_id_type"],"struct":["BlueprintId","DataQueryIdRegistry","SpaceViewIdRegistry"],"trait":["BlueprintIdRegistry"],"type":["DataQueryId","SpaceViewId"]};

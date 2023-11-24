@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["VIEWPORT_PATH"],"fn":["identify_entities_per_system_per_class"],"mod":["blueprint","external"],"struct":["SpaceInfoCollection","SpaceViewBlueprint","Viewport","ViewportBlueprint","ViewportState"]};

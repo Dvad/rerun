@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["DataResultHandle","DataResultNode","DataResultTree","EntityOverrides"],"trait":["DataQuery","PropertyResolver"]};
