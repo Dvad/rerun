@@ -11,6 +11,8 @@ use re_viewer_context::{
     ViewQuery, ViewerContext,
 };
 
+use crate::space_view_class::TimeSeriesSpaceViewFeedback;
+
 #[derive(Clone, Debug)]
 pub struct PlotPointAttrs {
     pub label: Option<String>,
@@ -124,6 +126,13 @@ impl TimeSeriesSystem {
 
         let store = ctx.store_db.store();
 
+        let ui_feedback = TimeSeriesSpaceViewFeedback::remove(&query.space_view_id);
+        let x_tick_size = ui_feedback
+            .map(|feedback| {
+                feedback.plot_bounds.width() / feedback.plot_canvas_size.x.max(0.001) as f64
+            })
+            .unwrap_or(0.0);
+
         for data_result in query.iter_visible_data_results(Self::name()) {
             let annotations = self.annotation_map.find(&data_result.entity_path);
             let annotation_info = annotations
@@ -167,36 +176,111 @@ impl TimeSeriesSystem {
                 |it| {
                     re_tracing::profile_function!();
 
-                    // TODO: type aliases
-
-                    // let mut derived = derived
-                    //     .entry("time_series".into())
-                    //     .or_insert(Box::<Vec<PlotPoint>>::default());
-
-                    // let mut points = derived.downcast_mut::<Vec<PlotPoint>>().unwrap();
                     let mut points = Vec::new();
-                    // dbg!(points.len());
 
-                    // TODO: OOO craziness (what does that even mean???)
+                    // if x_tick_size.floor() > 1.0 {
+                    //     re_tracing::profile_scope!("build (decimated)");
+                    //
+                    //     for ((time, _row_id), _, scalars, scatterings, colors, radii, labels) in
+                    //         it.step_by(x_tick_size.floor() as usize)
+                    //     {
+                    //         for (scalar, scattered, color, radius, label) in
+                    //             itertools::izip!(scalars, scatterings, colors, radii, labels)
+                    //         {
+                    //             let color = annotation_info
+                    //                 .color(color.map(|c| c.to_array()), default_color);
+                    //             let label =
+                    //                 annotation_info.label(label.as_ref().map(|l| l.as_str()));
+                    //
+                    //             const DEFAULT_RADIUS: f32 = 0.75;
+                    //
+                    //             points.push(PlotPoint {
+                    //                 time: time.as_i64(),
+                    //                 value: scalar.0,
+                    //                 attrs: PlotPointAttrs {
+                    //                     label,
+                    //                     color,
+                    //                     radius: radius.map_or(DEFAULT_RADIUS, |r| r.0),
+                    //                     scattered: scattered.map_or(false, |s| s.0),
+                    //                 },
+                    //             });
+                    //         }
+                    //     }
+                    // } else
+                    if x_tick_size > 1.0 {
+                        // eprintln!("aggregating! {x_tick_size}");
+                        re_tracing::profile_scope!("build (aggregated)");
 
-                    let xxx = {
-                        re_tracing::profile_scope!("collect");
-                        it
-                        // .inspect(|_| {
-                        //     re_tracing::profile_scope!("XXX");
-                        // })
-                        // .step_by(1000) //TODO
-                        // .collect_vec()
-                    };
+                        let windowsz = x_tick_size.ceil() as usize;
 
-                    if true {
+                        // TODO: decimal values means including extra data, but not stealing it
+                        // from your neighbor!!
+
+                        loop {
+                            let mut acc: Vec<Option<PlotPoint>> = vec![None; windowsz];
+
+                            for i in 0..windowsz {
+                                let Some((
+                                    (time, _row_id),
+                                    _,
+                                    scalars,
+                                    scatterings,
+                                    colors,
+                                    radii,
+                                    labels,
+                                )) = it.next()
+                                else {
+                                    break;
+                                };
+
+                                for (scalar, scattered, color, radius, label) in
+                                    itertools::izip!(scalars, scatterings, colors, radii, labels)
+                                {
+                                    let color = annotation_info
+                                        .color(color.map(|c| c.to_array()), default_color);
+                                    let label =
+                                        annotation_info.label(label.as_ref().map(|l| l.as_str()));
+
+                                    const DEFAULT_RADIUS: f32 = 0.75;
+
+                                    acc[i] = Some(PlotPoint {
+                                        time: time.as_i64(),
+                                        value: scalar.0,
+                                        attrs: PlotPointAttrs {
+                                            label,
+                                            color,
+                                            radius: radius.map_or(DEFAULT_RADIUS, |r| r.0),
+                                            scattered: scattered.map_or(false, |s| s.0),
+                                        },
+                                    });
+                                }
+                            }
+
+                            let aggregated = acc.drain(..).flatten().reduce(|mut acc, point| {
+                                // TODO: destruct for fwd compat
+                                acc.time = i64::max(acc.time, point.time);
+                                acc.value = f64::max(acc.value, point.value);
+                                acc.attrs.label = point.attrs.label;
+                                acc.attrs.color = point.attrs.color;
+                                acc.attrs.radius = f32::max(acc.attrs.radius, point.attrs.radius);
+                                acc.attrs.scattered =
+                                    bool::max(acc.attrs.scattered, point.attrs.scattered);
+                                acc
+                            });
+
+                            if aggregated.is_none() {
+                                break;
+                            }
+
+                            points.extend(aggregated);
+                        }
+                    } else {
                         re_tracing::profile_scope!("build");
-                        for ((time, _row_id), _, scalars, scatterings, colors, radii, labels) in xxx
+                        for ((time, _row_id), _, scalars, scatterings, colors, radii, labels) in it
                         {
                             for (scalar, scattered, color, radius, label) in
                                 itertools::izip!(scalars, scatterings, colors, radii, labels)
                             {
-                                // eprintln!("{row_id} {scalar}");
                                 let color = annotation_info
                                     .color(color.map(|c| c.to_array()), default_color);
                                 let label =
